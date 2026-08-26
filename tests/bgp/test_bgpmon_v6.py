@@ -90,23 +90,24 @@ def common_v6_setup_teardown(duthosts, tbinfo, enum_rand_one_per_hwsku_frontend_
     peer_addr = str(IPNetwork(peer_addr).ip)
     peer_ports, local_ports = get_all_uplink_ptf_recv_ports(duthosts, tbinfo)
 
-    # Get loopback4096 address
+    # Get loopback address based on platform type:
+    # modular chassis platforms use Loopback4096; fixed platforms use Loopback0
     if enum_rand_one_frontend_asic_index:
         cfg_facts = duthost.config_facts(
                         source='persistent', asic_index='all')[enum_rand_one_frontend_asic_index]['ansible_facts']
     else:
         cfg_facts = duthost.config_facts(source='persistent', asic_index='all')[0]['ansible_facts']
 
-    if 'Loopback4096' in cfg_facts['LOOPBACK_INTERFACE']:
-        lbs4096 = list(cfg_facts['LOOPBACK_INTERFACE']['Loopback4096'].keys())
-        for lb4096 in lbs4096:
-            lb4096intf = ipaddress.ip_interface(lb4096)
-            if lb4096intf.ip.version == 6:
-                if "/" in lb4096:
-                    local_addr = lb4096.split("/")[0]
-                    break
-                else:
-                    local_addr = lb4096
+    is_modular_chassis = duthost.facts.get('modular_chassis', False)
+    loopback_name = 'Loopback4096' if is_modular_chassis else 'Loopback0'
+
+    local_addr = None
+    if loopback_name in cfg_facts['LOOPBACK_INTERFACE']:
+        for lb in list(cfg_facts['LOOPBACK_INTERFACE'][loopback_name].keys()):
+            lbintf = ipaddress.ip_interface(lb)
+            if lbintf.ip.version == 6:
+                local_addr = lb.split("/")[0] if "/" in lb else lb
+                break
 
     mg_facts = duthost.minigraph_facts(host=duthost.hostname)['ansible_facts']
     # Assign peer addr to an interface on ptf
